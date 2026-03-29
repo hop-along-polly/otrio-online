@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Otrio</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Setup Screen -->
+  <div id="setup-screen" class="screen active">
+    <div class="setup-container">
+      <h1 class="title">Otrio</h1>
+      <div class="board-teaser">
+        <svg viewBox="0 0 120 120" width="120" height="120">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="#E89C3F" stroke-width="4"/>
+          <circle cx="60" cy="60" r="35" fill="none" stroke="#1ED4B8" stroke-width="4"/>
+          <circle cx="60" cy="60" r="20" fill="none" stroke="#2A7EDB" stroke-width="4"/>
+        </svg>
+      </div>
+      <div class="setup-section">
+        <label>Number of Players</label>
+        <div class="player-count-btns">
+          <button class="count-btn" data-count="2">2</button>
+          <button class="count-btn active" data-count="3">3</button>
+          <button class="count-btn" data-count="4">4</button>
+        </div>
+      </div>
+      <div id="player-slots" class="setup-section">
+        <!-- Filled by JS -->
+      </div>
+      <button id="start-btn" class="primary-btn">Start Game</button>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="game-screen" class="screen">
+    <header class="game-header">
+      <button id="menu-btn" class="icon-btn" aria-label="Menu" title="Back to menu">&#9776;</button>
+      <div id="turn-indicator">
+        <span id="turn-color-dot"></span>
+        <span id="turn-text">Player 1's Turn</span>
+      </div>
+      <div class="header-actions">
+        <button id="undo-btn" class="icon-btn" aria-label="Undo" title="Undo last move">&#8630;</button>
+        <button id="rules-btn" class="icon-btn" aria-label="Rules" title="Quick rules">?</button>
+        <button id="theme-btn" class="icon-btn" aria-label="Toggle theme" title="Toggle dark/light mode">&#9790;</button>
+        <button id="sound-btn" class="icon-btn" aria-label="Toggle sound" title="Toggle sound">&#9834;</button>
+      </div>
+    </header>
+
+    <div class="board-wrapper">
+      <svg id="board-svg" viewBox="0 0 500 500" aria-label="Otrio game board">
+        <!-- Background -->
+        <rect x="0" y="0" width="500" height="500" fill="none"/>
+        <!-- Cross arms (decorative) -->
+        <!-- Top arm -->
+        <g class="deco-arm">
+          <circle cx="250" cy="65" r="45" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="250" cy="65" r="30" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="250" cy="65" r="15" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+        </g>
+        <!-- Bottom arm -->
+        <g class="deco-arm">
+          <circle cx="250" cy="435" r="45" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="250" cy="435" r="30" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="250" cy="435" r="15" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+        </g>
+        <!-- Left arm -->
+        <g class="deco-arm">
+          <circle cx="65" cy="250" r="45" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="65" cy="250" r="30" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="65" cy="250" r="15" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+        </g>
+        <!-- Right arm -->
+        <g class="deco-arm">
+          <circle cx="435" cy="250" r="45" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="435" cy="250" r="30" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+          <circle cx="435" cy="250" r="15" fill="none" stroke="var(--ring-empty)" stroke-width="1.5"/>
+        </g>
+        <!-- Central grid highlight -->
+        <rect x="115" y="115" width="270" height="270" rx="18" ry="18"
+              fill="var(--grid-bg)" stroke="var(--grid-border)" stroke-width="2"/>
+        <!-- 3x3 grid cells rendered by JS -->
+        <g id="grid-cells"></g>
+      </svg>
+    </div>
+
+    <div id="player-panel">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+
+  <!-- Rules Popover -->
+  <div id="rules-popover" class="modal hidden">
+    <div class="modal-content">
+      <button class="close-modal" aria-label="Close">&times;</button>
+      <h2>How to Win</h2>
+      <ul>
+        <li><strong>Same Size</strong> &mdash; Three pieces of the same size in a row, column, or diagonal.</li>
+        <li><strong>Ordered Size</strong> &mdash; Three pieces in ascending or descending size order in a row, column, or diagonal.</li>
+        <li><strong>Concentric</strong> &mdash; Three pieces of different sizes (small, medium, large) all stacked in the same cell.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Game Over Modal -->
+  <div id="gameover-modal" class="modal hidden">
+    <div class="modal-content gameover-content">
+      <div id="gameover-rings" class="gameover-rings">
+        <svg viewBox="0 0 120 120" width="120" height="120">
+          <circle class="anim-ring r1" cx="60" cy="60" r="50" fill="none" stroke-width="5"/>
+          <circle class="anim-ring r2" cx="60" cy="60" r="35" fill="none" stroke-width="5"/>
+          <circle class="anim-ring r3" cx="60" cy="60" r="20" fill="none" stroke-width="5"/>
+        </svg>
+      </div>
+      <h2 id="gameover-text">Player 1 Wins!</h2>
+      <div class="gameover-actions">
+        <button id="play-again-btn" class="primary-btn">Play Again</button>
+        <button id="return-menu-btn" class="secondary-btn">Return to Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
