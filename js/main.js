@@ -7,7 +7,7 @@
   const COLOR_NAMES = ["Red", "Green", "Blue", "Purple"];
   const SIZES = ["large", "medium", "small"];
   const RING_RADII = { large: 44, medium: 30, small: 14 };
-  const RING_STROKE = { empty: 1.5, placed: 4.5 };
+  const RING_STROKE = { empty: 2, placed: 6 };
   // Cells spaced 120px apart in a 600x600 SVG, centered at 300
   const CELL_ORIGINS = [
     [{ x: 180, y: 180 }, { x: 300, y: 180 }, { x: 420, y: 180 }],
@@ -20,9 +20,9 @@
     [[0,0],[1,1],[2,2]], [[0,2],[1,1],[2,0]],
   ];
   // Tray cell: 3 concentric rings in a mini cell (like the board)
-  const TRAY_CELL_SIZE = 76; // viewBox & display size
-  const TRAY_RING_RADII = { large: 32, medium: 22, small: 11 };
-  const TRAY_RING_STROKE = 3;
+  const TRAY_CELL_SIZE = 80; // viewBox & display size
+  const TRAY_RING_RADII = { large: 34, medium: 24, small: 11 };
+  const TRAY_RING_STROKE = 4;
 
   // ── Audio ──────────────────────────────────────────────────
   let audioCtx = null;
@@ -424,16 +424,39 @@
 
     dragging = { colorIdx, size, element: el };
 
-    // Setup ghost
-    const ghostRadius = size === "large" ? 50 : size === "medium" ? 36 : 20;
-    dragGhostCircle.setAttribute("r", ghostRadius);
+    // Size the ghost to match the board ring's on-screen pixel size
+    const boardSvg = document.getElementById("board-svg");
+    const boardRect = boardSvg.getBoundingClientRect();
+    const viewBoxSize = 380; // viewBox width
+    const scale = boardRect.width / viewBoxSize;
+    const boardRadius = RING_RADII[size];
+    const boardStroke = RING_STROKE.placed;
+    const pixelDiameter = (boardRadius * 2 + boardStroke) * scale;
+    const ghostPixelSize = Math.round(pixelDiameter);
+
+    // Set ghost SVG to match
+    const ghostViewSize = (boardRadius + boardStroke) * 2;
+    const ghostCenter = ghostViewSize / 2;
+    dragGhost.setAttribute("viewBox", `0 0 ${ghostViewSize} ${ghostViewSize}`);
+    dragGhost.setAttribute("width", ghostPixelSize);
+    dragGhost.setAttribute("height", ghostPixelSize);
+    dragGhostCircle.setAttribute("cx", ghostCenter);
+    dragGhostCircle.setAttribute("cy", ghostCenter);
+    dragGhostCircle.setAttribute("r", boardRadius);
+
     if (size === "small") {
       dragGhostCircle.setAttribute("stroke", "none");
+      dragGhostCircle.setAttribute("stroke-width", 0);
       dragGhostCircle.setAttribute("fill", COLORS[colorIdx]);
     } else {
       dragGhostCircle.setAttribute("stroke", COLORS[colorIdx]);
+      dragGhostCircle.setAttribute("stroke-width", boardStroke);
       dragGhostCircle.setAttribute("fill", colorWithAlpha(colorIdx, 0.15));
     }
+
+    // Store half-size for centering
+    dragging.ghostHalf = ghostPixelSize / 2;
+
     dragGhost.classList.remove("hidden");
     moveGhost(e.clientX, e.clientY);
 
@@ -447,8 +470,9 @@
   }
 
   function moveGhost(x, y) {
-    dragGhost.style.left = (x - 40) + "px";
-    dragGhost.style.top = (y - 40) + "px";
+    const half = dragging ? dragging.ghostHalf || 40 : 40;
+    dragGhost.style.left = (x - half) + "px";
+    dragGhost.style.top = (y - half) + "px";
   }
 
   function onPointerMove(e) {
@@ -499,8 +523,9 @@
     const svg = document.getElementById("board-svg");
     const rect = svg.getBoundingClientRect();
     // Convert client coords to SVG viewBox coords
-    const svgX = ((clientX - rect.left) / rect.width) * 600;
-    const svgY = ((clientY - rect.top) / rect.height) * 600;
+    // viewBox is "110 110 380 380"
+    const svgX = 110 + ((clientX - rect.left) / rect.width) * 380;
+    const svgY = 110 + ((clientY - rect.top) / rect.height) * 380;
 
     if (!dragging) return null;
     const { size } = dragging;

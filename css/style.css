@@ -240,17 +240,18 @@ body {
 /* ===== Game Area ===== */
 .game-area {
   width: 100%;
+  max-width: 500px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 0.5rem;
   padding: 0.5rem;
 }
 
 /* ===== Board ===== */
 .board-wrapper {
-  width: 85vw;
-  max-width: 440px;
+  width: 100%;
+  max-width: 500px;
   aspect-ratio: 1;
 }
 
@@ -262,7 +263,8 @@ body {
 /* ===== Player Carousel ===== */
 #player-carousel {
   width: 100%;
-  max-width: 460px;
+  max-width: 500px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -373,7 +375,7 @@ body {
 .tray-ring.available.draggable {
   cursor: grab;
   pointer-events: stroke;
-  stroke-width: 6;
+  stroke-width: 7;
 }
 
 .tray-ring.available.draggable.peg {
@@ -381,7 +383,7 @@ body {
 }
 
 .tray-ring.available.draggable:hover {
-  stroke-width: 8;
+  stroke-width: 9;
   filter: brightness(1.15);
 }
 
@@ -614,21 +616,14 @@ body {
 
 /* ===== Responsive ===== */
 @media (min-width: 768px) {
-  .board-wrapper {
-    width: 50vw;
-    max-width: 440px;
-  }
+  .game-area { max-width: 520px; }
+  .board-wrapper { max-width: 520px; }
+  #player-carousel { max-width: 520px; }
   .setup-container { padding: 3rem 1rem; }
-  #player-carousel { max-width: 460px; }
 }
 
 @media (max-width: 480px) {
-  .board-wrapper {
-    width: 85vw;
-    max-width: 380px;
-  }
-  .tray-cell { width: 62px; height: 62px; }
-  .player-tray .tray-header { font-size: 0.72rem; min-width: 50px; }
+  .player-tray .tray-header { font-size: 0.75rem; min-width: 52px; }
 }
 
 @media (max-width: 360px) {
@@ -636,5 +631,5 @@ body {
   #turn-text { font-size: 0.85rem; }
   .icon-btn { font-size: 1.2rem; min-width: 38px; min-height: 38px; }
   .player-tray { padding: 0.3rem 0.4rem; }
-  .tray-cell { width: 52px; height: 52px; }
+  .tray-cell { width: 66px; height: 66px; }
 }
