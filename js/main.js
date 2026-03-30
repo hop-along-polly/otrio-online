@@ -3,29 +3,26 @@
   "use strict";
 
   // ── Constants ──────────────────────────────────────────────
-  const COLORS = ["#E89C3F", "#1ED4B8", "#4ECDC4", "#2A7EDB"];
-  const COLOR_NAMES = ["Orange", "Teal", "Cyan", "Blue"];
+  const COLORS = ["#E74C3C", "#2ECC71", "#3498DB", "#9B59B6"];
+  const COLOR_NAMES = ["Red", "Green", "Blue", "Purple"];
   const SIZES = ["large", "medium", "small"];
-  const RING_RADII = { large: 45, medium: 30, small: 15 };
-  const RING_STROKE = { empty: 1.5, placed: 5 };
+  const RING_RADII = { large: 44, medium: 30, small: 14 };
+  const RING_STROKE = { empty: 1.5, placed: 4.5 };
+  // Cells spaced 120px apart in a 600x600 SVG, centered at 300
   const CELL_ORIGINS = [
-    [{ x: 170, y: 170 }, { x: 250, y: 170 }, { x: 330, y: 170 }],
-    [{ x: 170, y: 250 }, { x: 250, y: 250 }, { x: 330, y: 250 }],
-    [{ x: 170, y: 330 }, { x: 250, y: 330 }, { x: 330, y: 330 }],
+    [{ x: 180, y: 180 }, { x: 300, y: 180 }, { x: 420, y: 180 }],
+    [{ x: 180, y: 300 }, { x: 300, y: 300 }, { x: 420, y: 300 }],
+    [{ x: 180, y: 420 }, { x: 300, y: 420 }, { x: 420, y: 420 }],
   ];
   const LINES = [
-    // rows
-    [[0,0],[0,1],[0,2]],
-    [[1,0],[1,1],[1,2]],
-    [[2,0],[2,1],[2,2]],
-    // cols
-    [[0,0],[1,0],[2,0]],
-    [[0,1],[1,1],[2,1]],
-    [[0,2],[1,2],[2,2]],
-    // diags
-    [[0,0],[1,1],[2,2]],
-    [[0,2],[1,1],[2,0]],
+    [[0,0],[0,1],[0,2]], [[1,0],[1,1],[1,2]], [[2,0],[2,1],[2,2]],
+    [[0,0],[1,0],[2,0]], [[0,1],[1,1],[2,1]], [[0,2],[1,2],[2,2]],
+    [[0,0],[1,1],[2,2]], [[0,2],[1,1],[2,0]],
   ];
+  // Tray cell: 3 concentric rings in a mini cell (like the board)
+  const TRAY_CELL_SIZE = 76; // viewBox & display size
+  const TRAY_RING_RADII = { large: 32, medium: 22, small: 11 };
+  const TRAY_RING_STROKE = 3;
 
   // ── Audio ──────────────────────────────────────────────────
   let audioCtx = null;
@@ -46,20 +43,24 @@
 
   function playPlace() { playTone(520, 0.15); }
   function playWin() {
-    playTone(523, 0.2); setTimeout(() => playTone(659, 0.2), 150);
+    playTone(523, 0.2);
+    setTimeout(() => playTone(659, 0.2), 150);
     setTimeout(() => playTone(784, 0.3), 300);
   }
 
   // ── State ──────────────────────────────────────────────────
   let playerCount = 3;
-  let players = []; // { name, color, colorIndex, isBot }
-  let board = [];   // 3x3 of { small, medium, large }
+  let players = [];
+  let board = [];
   let currentPlayerIndex = 0;
-  let moveHistory = [];  // { row, col, size, playerIndex }
+  let moveHistory = [];
   let gameOver = false;
-  let pieces = {};  // colorIndex -> { small: count, medium: count, large: count }
-  let twoPlayerColorMap = {}; // playerIndex -> [colorIndex, colorIndex]
-  let twoPlayerTurnColor = {}; // playerIndex -> which color (0 or 1) to use next
+  let pieces = {};
+  let twoPlayerColorMap = {};
+  let twoPlayerTurnColor = {};
+
+  // Drag state
+  let dragging = null; // { colorIdx, size, element }
 
   // ── DOM refs ───────────────────────────────────────────────
   const $ = (sel) => document.querySelector(sel);
@@ -72,15 +73,22 @@
   const turnDot = $("#turn-color-dot");
   const turnText = $("#turn-text");
   const gridCells = $("#grid-cells");
-  const playerPanel = $("#player-panel");
-  const rulesPopover = $("#rules-popover");
-  const gameoverModal = $("#gameover-modal");
-  const gameoverText = $("#gameover-text");
+  const playerCarousel = $("#player-carousel");
+  const tutorialModal = $("#tutorial-modal");
+  const tutorialSteps = $$("#tutorial-steps .tutorial-step");
+  const tutorialDotsContainer = $("#tutorial-dots");
+  const tutorialPrev = $("#tutorial-prev");
+  const tutorialNext = $("#tutorial-next");
+  const tutorialClose = $("#tutorial-close");
+  const howToPlayBtn = $("#how-to-play-btn");
+  const gameoverTemplate = $("#gameover-banner-template");
   const themeBtn = $("#theme-btn");
   const soundBtn = $("#sound-btn");
   const undoBtn = $("#undo-btn");
   const menuBtn = $("#menu-btn");
   const rulesBtn = $("#rules-btn");
+  const dragGhost = $("#drag-ghost");
+  const dragGhostCircle = dragGhost.querySelector("circle");
 
   // ── Setup Screen Logic ─────────────────────────────────────
   const playerConfigs = [
@@ -149,7 +157,7 @@
   menuBtn.addEventListener("click", () => {
     gameScreen.classList.remove("active");
     setupScreen.classList.add("active");
-    gameoverModal.classList.add("hidden");
+    removeBanner();
   });
 
   function initGame() {
@@ -163,9 +171,9 @@
     pieces = {};
     twoPlayerColorMap = {};
     twoPlayerTurnColor = {};
+    dragging = null;
 
     if (playerCount === 2) {
-      // Each player controls 2 colors
       for (let i = 0; i < 2; i++) {
         const c1 = i * 2;
         const c2 = i * 2 + 1;
@@ -175,7 +183,7 @@
           isBot: playerConfigs[i].isBot,
         });
         twoPlayerColorMap[i] = [c1, c2];
-        twoPlayerTurnColor[i] = 0; // start with first color
+        twoPlayerTurnColor[i] = 0;
         pieces[c1] = { small: 3, medium: 3, large: 3 };
         pieces[c2] = { small: 3, medium: 3, large: 3 };
       }
@@ -191,7 +199,7 @@
     }
 
     renderBoard();
-    renderPlayerPanel();
+    renderPlayerTrays();
     updateTurnIndicator();
     scheduleBot();
   }
@@ -210,25 +218,57 @@
           circle.setAttribute("cx", x);
           circle.setAttribute("cy", y);
           circle.setAttribute("r", radius);
-          circle.setAttribute("fill", occupant ? colorWithAlpha(occupant, 0.12) : "none");
           circle.setAttribute("data-row", r);
           circle.setAttribute("data-col", c);
           circle.setAttribute("data-size", size);
 
+          const isPeg = size === "small";
+
           if (occupant !== null) {
-            circle.setAttribute("stroke", COLORS[occupant]);
-            circle.setAttribute("stroke-width", RING_STROKE.placed);
+            if (isPeg) {
+              circle.setAttribute("fill", COLORS[occupant]);
+              circle.setAttribute("stroke", COLORS[occupant]);
+              circle.setAttribute("stroke-width", 0);
+            } else {
+              circle.setAttribute("fill", colorWithAlpha(occupant, 0.15));
+              circle.setAttribute("stroke", COLORS[occupant]);
+              circle.setAttribute("stroke-width", RING_STROKE.placed);
+            }
             circle.classList.add("ring-slot", "placed");
           } else {
-            circle.setAttribute("stroke", "var(--ring-empty)");
-            circle.setAttribute("stroke-width", RING_STROKE.empty);
-            circle.classList.add("ring-slot", "empty");
-            if (!gameOver && isLegalForCurrentPlayer(r, c, size)) {
-              circle.classList.add("legal");
-              circle.addEventListener("click", onRingClick);
+            if (isPeg) {
+              circle.setAttribute("fill", "var(--ring-empty)");
+              circle.setAttribute("stroke", "none");
+              circle.setAttribute("stroke-width", 0);
+            } else {
+              circle.setAttribute("fill", "none");
+              circle.setAttribute("stroke", "var(--ring-empty)");
+              circle.setAttribute("stroke-width", RING_STROKE.empty);
             }
+            circle.classList.add("ring-slot", "empty");
           }
           gridCells.appendChild(circle);
+        }
+      }
+    }
+  }
+
+  function updateDropTargets() {
+    // Remove all drop-target classes
+    gridCells.querySelectorAll(".drop-target").forEach((el) =>
+      el.classList.remove("drop-target")
+    );
+
+    if (!dragging || gameOver) return;
+
+    const { size } = dragging;
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        if (board[r][c][size] === null) {
+          const ring = gridCells.querySelector(
+            `[data-row="${r}"][data-col="${c}"][data-size="${size}"]`
+          );
+          if (ring) ring.classList.add("drop-target");
         }
       }
     }
@@ -242,56 +282,12 @@
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  function isLegalForCurrentPlayer(r, c, size) {
-    if (board[r][c][size] !== null) return false;
-    const player = players[currentPlayerIndex];
-    if (playerCount === 2) {
-      const turnIdx = twoPlayerTurnColor[currentPlayerIndex];
-      const colorIdx = twoPlayerColorMap[currentPlayerIndex][turnIdx];
-      return pieces[colorIdx][size] > 0;
-    } else {
-      const colorIdx = player.colorIndices[0];
-      return pieces[colorIdx][size] > 0;
-    }
-  }
-
   function getCurrentColor() {
     if (playerCount === 2) {
       const turnIdx = twoPlayerTurnColor[currentPlayerIndex];
       return twoPlayerColorMap[currentPlayerIndex][turnIdx];
     }
     return players[currentPlayerIndex].colorIndices[0];
-  }
-
-  // ── Player Panel ───────────────────────────────────────────
-  function renderPlayerPanel() {
-    playerPanel.innerHTML = "";
-    players.forEach((p, i) => {
-      const div = document.createElement("div");
-      div.className = "panel-player" + (i === currentPlayerIndex ? " active-turn" : "");
-
-      let colorDots = p.colorIndices.map((ci) =>
-        `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${COLORS[ci]};"></span>`
-      ).join(" ");
-
-      let piecesInfo;
-      if (playerCount === 2) {
-        const turnIdx = twoPlayerTurnColor[i];
-        const ci = twoPlayerColorMap[i][turnIdx];
-        const pp = pieces[ci];
-        piecesInfo = `Next: ${COLOR_NAMES[ci]} &middot; S:${pp.small} M:${pp.medium} L:${pp.large}`;
-      } else {
-        const ci = p.colorIndices[0];
-        const pp = pieces[ci];
-        piecesInfo = `S:${pp.small} M:${pp.medium} L:${pp.large}`;
-      }
-
-      div.style.color = COLORS[getCurrentColorForPlayer(i)];
-      div.innerHTML = `
-        <div class="panel-name">${p.name} ${p.isBot ? "(Bot)" : ""} ${colorDots}</div>
-        <div class="pieces-left">${piecesInfo}</div>`;
-      playerPanel.appendChild(div);
-    });
   }
 
   function getCurrentColorForPlayer(i) {
@@ -302,6 +298,112 @@
     return players[i].colorIndices[0];
   }
 
+  // ── Player Trays (carousel: active player first) ────────────
+  function renderPlayerTrays() {
+    playerCarousel.innerHTML = "";
+
+    // Build order: current player first, then next players in turn order
+    const order = [];
+    for (let i = 0; i < players.length; i++) {
+      order.push((currentPlayerIndex + i) % players.length);
+    }
+
+    order.forEach((pi) => {
+      const p = players[pi];
+      const tray = document.createElement("div");
+      tray.className = "player-tray" + (pi === currentPlayerIndex ? " active-turn" : "");
+      tray.style.color = COLORS[getCurrentColorForPlayer(pi)];
+
+      // Header
+      const header = document.createElement("div");
+      header.className = "tray-header";
+      let dots = p.colorIndices.map((ci) =>
+        `<span class="color-dot" style="background:${COLORS[ci]}"></span>`
+      ).join("");
+      header.innerHTML = `${p.name}${p.isBot ? " (Bot)" : ""} ${dots}`;
+      tray.appendChild(header);
+
+      // 3 concentric-ring cells per color, like mini board cells
+      const piecesDiv = document.createElement("div");
+      piecesDiv.className = "tray-pieces";
+
+      p.colorIndices.forEach((ci) => {
+        const isActive = pi === currentPlayerIndex && !p.isBot && !gameOver;
+        const isCorrectColor = playerCount === 2
+          ? ci === getCurrentColorForPlayer(pi)
+          : true;
+        const canDrag = isActive && isCorrectColor;
+
+        // 3 cells, each with concentric S/M/L rings
+        for (let slot = 0; slot < 3; slot++) {
+          const sz = TRAY_CELL_SIZE;
+          const cx = sz / 2;
+          const cy = sz / 2;
+          const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          svg.setAttribute("viewBox", `0 0 ${sz} ${sz}`);
+          svg.setAttribute("width", sz);
+          svg.setAttribute("height", sz);
+          svg.classList.add("tray-cell");
+
+          // Draw all three rings: large, medium, small
+          for (const size of SIZES) {
+            const radius = TRAY_RING_RADII[size];
+            const hasRemaining = pieces[ci][size] > slot;
+
+            const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            circle.setAttribute("cx", cx);
+            circle.setAttribute("cy", cy);
+            circle.setAttribute("r", radius);
+
+            const isPeg = size === "small";
+
+            if (hasRemaining) {
+              if (isPeg) {
+                circle.setAttribute("fill", COLORS[ci]);
+                circle.setAttribute("stroke", "none");
+                circle.setAttribute("stroke-width", 0);
+              } else {
+                circle.setAttribute("fill", colorWithAlpha(ci, 0.1));
+                circle.setAttribute("stroke", COLORS[ci]);
+                circle.setAttribute("stroke-width", TRAY_RING_STROKE);
+              }
+              circle.classList.add("tray-ring", "available");
+              if (isPeg) circle.classList.add("peg");
+              circle.dataset.colorIdx = ci;
+              circle.dataset.size = size;
+              circle.dataset.slot = slot;
+
+              if (canDrag) {
+                circle.classList.add("draggable");
+                circle.addEventListener("pointerdown", onPiecePointerDown);
+              } else {
+                circle.classList.add("inactive");
+              }
+            } else {
+              if (isPeg) {
+                circle.setAttribute("fill", "var(--ring-empty)");
+                circle.setAttribute("stroke", "none");
+                circle.setAttribute("stroke-width", 0);
+              } else {
+                circle.setAttribute("fill", "none");
+                circle.setAttribute("stroke", "var(--ring-empty)");
+                circle.setAttribute("stroke-width", 1);
+              }
+              circle.classList.add("tray-ring", "used");
+            }
+
+            svg.appendChild(circle);
+          }
+
+          piecesDiv.appendChild(svg);
+        }
+      });
+
+      tray.appendChild(piecesDiv);
+      playerCarousel.appendChild(tray);
+    });
+  }
+
   function updateTurnIndicator() {
     const ci = getCurrentColor();
     turnDot.style.background = COLORS[ci];
@@ -309,18 +411,122 @@
     turnText.textContent = `${p.name}${p.isBot ? " (Bot)" : ""} – ${COLOR_NAMES[ci]}`;
   }
 
-  // ── Move Logic ─────────────────────────────────────────────
-  function onRingClick(e) {
+  // ── Drag & Drop (pointer events for mouse + touch) ─────────
+  function onPiecePointerDown(e) {
     if (gameOver) return;
     const player = players[currentPlayerIndex];
-    if (player.isBot) return; // ignore clicks during bot turn
+    if (player.isBot) return;
 
-    const r = parseInt(e.target.dataset.row);
-    const c = parseInt(e.target.dataset.col);
-    const size = e.target.dataset.size;
-    placeMove(r, c, size);
+    e.preventDefault();
+    const el = e.currentTarget; // the circle element inside tray SVG
+    const colorIdx = parseInt(el.dataset.colorIdx);
+    const size = el.dataset.size;
+
+    dragging = { colorIdx, size, element: el };
+
+    // Setup ghost
+    const ghostRadius = size === "large" ? 50 : size === "medium" ? 36 : 20;
+    dragGhostCircle.setAttribute("r", ghostRadius);
+    if (size === "small") {
+      dragGhostCircle.setAttribute("stroke", "none");
+      dragGhostCircle.setAttribute("fill", COLORS[colorIdx]);
+    } else {
+      dragGhostCircle.setAttribute("stroke", COLORS[colorIdx]);
+      dragGhostCircle.setAttribute("fill", colorWithAlpha(colorIdx, 0.15));
+    }
+    dragGhost.classList.remove("hidden");
+    moveGhost(e.clientX, e.clientY);
+
+    el.style.opacity = "0.3";
+
+    updateDropTargets();
+
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointercancel", onPointerUp);
   }
 
+  function moveGhost(x, y) {
+    dragGhost.style.left = (x - 40) + "px";
+    dragGhost.style.top = (y - 40) + "px";
+  }
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    moveGhost(e.clientX, e.clientY);
+
+    // Highlight the drop target under pointer
+    gridCells.querySelectorAll(".drop-hover").forEach((el) =>
+      el.classList.remove("drop-hover")
+    );
+    const target = getDropTarget(e.clientX, e.clientY);
+    if (target) target.classList.add("drop-hover");
+  }
+
+  function onPointerUp(e) {
+    if (!dragging) return;
+    e.preventDefault();
+
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+    document.removeEventListener("pointercancel", onPointerUp);
+
+    dragGhost.classList.add("hidden");
+    gridCells.querySelectorAll(".drop-hover").forEach((el) =>
+      el.classList.remove("drop-hover")
+    );
+    gridCells.querySelectorAll(".drop-target").forEach((el) =>
+      el.classList.remove("drop-target")
+    );
+
+    if (dragging.element) dragging.element.style.opacity = "";
+
+    const target = getDropTarget(e.clientX, e.clientY);
+    if (target) {
+      const r = parseInt(target.dataset.row);
+      const c = parseInt(target.dataset.col);
+      const size = target.dataset.size;
+      if (size === dragging.size && board[r][c][size] === null) {
+        placeMove(r, c, size);
+      }
+    }
+
+    dragging = null;
+  }
+
+  function getDropTarget(clientX, clientY) {
+    const svg = document.getElementById("board-svg");
+    const rect = svg.getBoundingClientRect();
+    // Convert client coords to SVG viewBox coords
+    const svgX = ((clientX - rect.left) / rect.width) * 600;
+    const svgY = ((clientY - rect.top) / rect.height) * 600;
+
+    if (!dragging) return null;
+    const { size } = dragging;
+    const radius = RING_RADII[size];
+
+    let closest = null;
+    let closestDist = Infinity;
+
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        if (board[r][c][size] !== null) continue;
+        const { x, y } = CELL_ORIGINS[r][c];
+        const dist = Math.hypot(svgX - x, svgY - y);
+        // Allow generous hit area
+        if (dist < radius + 20 && dist < closestDist) {
+          closestDist = dist;
+          closest = gridCells.querySelector(
+            `[data-row="${r}"][data-col="${c}"][data-size="${size}"]`
+          );
+        }
+      }
+    }
+    return closest;
+  }
+
+  // ── Move Logic ─────────────────────────────────────────────
   function placeMove(r, c, size) {
     const colorIdx = getCurrentColor();
     board[r][c][size] = colorIdx;
@@ -328,35 +534,33 @@
     moveHistory.push({ row: r, col: c, size, playerIndex: currentPlayerIndex, colorIdx });
     playPlace();
 
-    // Check win
     const winner = checkAllWins(colorIdx);
     if (winner) {
       gameOver = true;
       renderBoard();
-      highlightWin(winner.cells, winner.type);
+      renderPlayerTrays();
+      highlightWin(winner.cells);
       showGameOver(colorIdx);
       return;
     }
 
-    // Check draw (no legal moves for anyone)
     if (checkDraw()) {
       gameOver = true;
       renderBoard();
+      renderPlayerTrays();
       showGameOver(null);
       return;
     }
 
-    // Advance turn
     advanceTurn();
     renderBoard();
-    renderPlayerPanel();
+    renderPlayerTrays();
     updateTurnIndicator();
     scheduleBot();
   }
 
   function advanceTurn() {
     if (playerCount === 2) {
-      // Alternate the color within the player, then switch player
       twoPlayerTurnColor[currentPlayerIndex] =
         1 - twoPlayerTurnColor[currentPlayerIndex];
       currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
@@ -364,7 +568,6 @@
       currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
     }
 
-    // Skip players with no legal moves
     let checked = 0;
     while (checked < players.length && !hasAnyLegalMove(currentPlayerIndex)) {
       if (playerCount === 2) {
@@ -377,15 +580,22 @@
   }
 
   function hasAnyLegalMove(pi) {
-    const saved = currentPlayerIndex;
-    currentPlayerIndex = pi;
-    let found = false;
-    for (let r = 0; r < 3 && !found; r++)
-      for (let c = 0; c < 3 && !found; c++)
-        for (const size of SIZES)
-          if (isLegalForCurrentPlayer(r, c, size)) { found = true; break; }
-    currentPlayerIndex = saved;
-    return found;
+    let colorIndices;
+    if (playerCount === 2) {
+      const turnIdx = twoPlayerTurnColor[pi];
+      colorIndices = [twoPlayerColorMap[pi][turnIdx]];
+    } else {
+      colorIndices = players[pi].colorIndices;
+    }
+
+    for (const ci of colorIndices) {
+      for (let r = 0; r < 3; r++)
+        for (let c = 0; c < 3; c++)
+          for (const size of SIZES)
+            if (board[r][c][size] === null && pieces[ci][size] > 0)
+              return true;
+    }
+    return false;
   }
 
   function checkDraw() {
@@ -431,10 +641,7 @@
       for (let c = 0; c < 3; c++) {
         const cell = board[r][c];
         if (cell.small === colorIdx && cell.medium === colorIdx && cell.large === colorIdx) {
-          return {
-            cells: SIZES.map((s) => ({ r, c, size: s })),
-            type: "concentric",
-          };
+          return { cells: SIZES.map((s) => ({ r, c, size: s })), type: "concentric" };
         }
       }
     }
@@ -450,18 +657,46 @@
     });
   }
 
+  function removeBanner() {
+    const existing = document.getElementById("gameover-banner");
+    if (existing) existing.remove();
+  }
+
   function showGameOver(winnerColorIdx) {
-    gameoverModal.classList.remove("hidden");
-    const rings = gameoverModal.querySelectorAll(".anim-ring");
+    removeBanner();
+
+    const clone = gameoverTemplate.content.cloneNode(true);
+    const banner = clone.querySelector("#gameover-banner");
+    const textEl = clone.querySelector("#gameover-text");
+    const rings = clone.querySelectorAll(".anim-ring");
+
     if (winnerColorIdx !== null) {
+      const color = COLORS[winnerColorIdx];
       const name = findPlayerByColor(winnerColorIdx);
-      gameoverText.textContent = `${name} Wins!`;
-      rings.forEach((r) => (r.style.stroke = COLORS[winnerColorIdx]));
+      textEl.textContent = `${name} Wins!`;
+      textEl.style.color = color;
+      banner.style.color = color;
+      rings.forEach((r) => (r.style.stroke = color));
       playWin();
     } else {
-      gameoverText.textContent = "It's a Draw!";
+      textEl.textContent = "It's a Draw!";
       rings.forEach((r) => (r.style.stroke = "var(--ring-empty)"));
     }
+
+    // Wire up buttons
+    clone.querySelector("#play-again-btn").addEventListener("click", () => {
+      removeBanner();
+      initGame();
+    });
+    clone.querySelector("#return-menu-btn").addEventListener("click", () => {
+      removeBanner();
+      gameScreen.classList.remove("active");
+      setupScreen.classList.add("active");
+    });
+
+    // Insert banner at top of game area, after the header
+    const gameArea = gameScreen.querySelector(".game-area");
+    gameArea.insertBefore(clone, gameArea.firstChild);
   }
 
   function findPlayerByColor(colorIdx) {
@@ -483,7 +718,7 @@
         1 - twoPlayerTurnColor[currentPlayerIndex];
     }
     renderBoard();
-    renderPlayerPanel();
+    renderPlayerTrays();
     updateTurnIndicator();
   });
 
@@ -499,7 +734,6 @@
     if (gameOver) return;
     const colorIdx = getCurrentColor();
 
-    // Collect all legal moves
     const legalMoves = [];
     for (let r = 0; r < 3; r++)
       for (let c = 0; c < 3; c++)
@@ -510,13 +744,13 @@
     if (legalMoves.length === 0) {
       advanceTurn();
       renderBoard();
-      renderPlayerPanel();
+      renderPlayerTrays();
       updateTurnIndicator();
       scheduleBot();
       return;
     }
 
-    // 1. Check for winning move
+    // 1. Win
     for (const m of legalMoves) {
       board[m.r][m.c][m.size] = colorIdx;
       if (checkAllWins(colorIdx)) {
@@ -527,7 +761,7 @@
       board[m.r][m.c][m.size] = null;
     }
 
-    // 2. Block opponent wins
+    // 2. Block
     const opponentColors = [];
     for (let ci = 0; ci < 4; ci++) {
       if (ci !== colorIdx && (playerCount !== 2 || !players[currentPlayerIndex].colorIndices.includes(ci))) {
@@ -547,39 +781,76 @@
       }
     }
 
-    // 3. Random legal move
+    // 3. Random
     const pick = legalMoves[Math.floor(Math.random() * legalMoves.length)];
     placeMove(pick.r, pick.c, pick.size);
   }
 
-  // ── Modals & Buttons ───────────────────────────────────────
-  rulesBtn.addEventListener("click", () => rulesPopover.classList.remove("hidden"));
-  rulesPopover.querySelector(".close-modal").addEventListener("click", () =>
-    rulesPopover.classList.add("hidden")
-  );
-  rulesPopover.addEventListener("click", (e) => {
-    if (e.target === rulesPopover) rulesPopover.classList.add("hidden");
+  // ── Tutorial Modal ──────────────────────────────────────────
+  let tutorialStep = 0;
+  const totalSteps = tutorialSteps.length;
+
+  // Build dot indicators
+  for (let i = 0; i < totalSteps; i++) {
+    const dot = document.createElement("span");
+    dot.className = "tutorial-dot" + (i === 0 ? " active" : "");
+    dot.dataset.step = i;
+    dot.addEventListener("click", () => goToTutorialStep(i));
+    tutorialDotsContainer.appendChild(dot);
+  }
+
+  function openTutorial() {
+    tutorialStep = 0;
+    updateTutorial();
+    tutorialModal.classList.remove("hidden");
+  }
+
+  function closeTutorial() {
+    tutorialModal.classList.add("hidden");
+  }
+
+  function goToTutorialStep(step) {
+    tutorialStep = Math.max(0, Math.min(step, totalSteps - 1));
+    updateTutorial();
+  }
+
+  function updateTutorial() {
+    tutorialSteps.forEach((el, i) => {
+      el.classList.toggle("active", i === tutorialStep);
+    });
+    tutorialDotsContainer.querySelectorAll(".tutorial-dot").forEach((dot, i) => {
+      dot.classList.toggle("active", i === tutorialStep);
+    });
+    tutorialPrev.style.visibility = tutorialStep === 0 ? "hidden" : "visible";
+    tutorialNext.textContent = tutorialStep === totalSteps - 1 ? "Got it!" : "Next";
+  }
+
+  tutorialNext.addEventListener("click", () => {
+    if (tutorialStep === totalSteps - 1) {
+      closeTutorial();
+    } else {
+      goToTutorialStep(tutorialStep + 1);
+    }
   });
 
-  $("#play-again-btn").addEventListener("click", () => {
-    gameoverModal.classList.add("hidden");
-    initGame();
+  tutorialPrev.addEventListener("click", () => {
+    goToTutorialStep(tutorialStep - 1);
   });
 
-  $("#return-menu-btn").addEventListener("click", () => {
-    gameoverModal.classList.add("hidden");
-    gameScreen.classList.remove("active");
-    setupScreen.classList.add("active");
+  tutorialClose.addEventListener("click", closeTutorial);
+  tutorialModal.addEventListener("click", (e) => {
+    if (e.target === tutorialModal) closeTutorial();
   });
 
-  // Theme toggle
+  howToPlayBtn.addEventListener("click", openTutorial);
+  rulesBtn.addEventListener("click", openTutorial);
+
   themeBtn.addEventListener("click", () => {
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
     document.documentElement.setAttribute("data-theme", isDark ? "" : "dark");
     themeBtn.textContent = isDark ? "\u263E" : "\u2600";
   });
 
-  // Sound toggle
   soundBtn.addEventListener("click", () => {
     soundEnabled = !soundEnabled;
     soundBtn.textContent = soundEnabled ? "\u266A" : "\u2715";
@@ -588,8 +859,7 @@
   // ── Keyboard Support ───────────────────────────────────────
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      rulesPopover.classList.add("hidden");
-      gameoverModal.classList.add("hidden");
+      closeTutorial();
     }
     if (e.key === "z" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
